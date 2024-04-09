@@ -3,6 +3,7 @@ import { AppController } from './app.controller'
 import { AppService } from './app.service'
 import { ConfigModule } from '@nestjs/config'
 import { ClsModule } from 'nestjs-cls'
+import { VideoModule } from './video/video.module'
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { ClsModule } from 'nestjs-cls'
         },
       },
     }),
+    VideoModule,
   ],
   controllers: [AppController],
   providers: [AppService],
