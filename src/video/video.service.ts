@@ -24,6 +24,11 @@ export class VideoService {
       const files = await fs.readdir(projectDir)
       const fileContent = files
         .filter((it) => it.endsWith('.png'))
+        .sort((a, b) => {
+          const aIndex = a.split('_')[1]
+          const bIndex = b.split('_')[1]
+          return parseInt(aIndex) < parseInt(bIndex) ? -1 : 1
+        })
         .map((it) => {
           return `file './${it}'\nduration 3`
         })
