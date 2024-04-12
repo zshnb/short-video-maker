@@ -10,3 +10,7 @@ export function localProjectPath(projectId: string) {
   }
   return path
 }
+
+export function subtitleDir(projectDir: string) {
+  return `${projectDir}/subtitle`
+}
