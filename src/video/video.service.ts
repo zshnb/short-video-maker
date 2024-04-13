@@ -46,7 +46,7 @@ export class VideoService {
     const vfArgs = sceneInfos
       .flatMap((it, index) => {
         return it.words.map((word, j) => {
-          return `drawtext=textfile=${subtitleDir(projectDir)}/${index}_${j}.txt:x=(w-text_w)/2:y=(h-text_h)/2:fontsize=80:fontcolor=white:enable='between(t,${word.start},${word.end})'`
+          return `drawtext=fontfile=./assets/Resolve.otf:textfile=${subtitleDir(projectDir)}/${index}_${j}.txt:x=(w-text_w)/2:y=(h-text_h)/2:fontsize=80:fontcolor=white:enable='between(t,${word.start},${word.end})'`
         })
       })
       .join(',')
