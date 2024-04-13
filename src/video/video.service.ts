@@ -26,7 +26,7 @@ export class VideoService {
   }
 
   private async concatImageToVideo(projectDir: string) {
-    await fs.cp(`${tmpDir}/test_data_m2`, projectDir, { recursive: true })
+    await fs.cp(`test_data/test_data_m2`, projectDir, { recursive: true })
     const sceneInfos = await this.getAllSceneInfo(projectDir)
     await this.prepareData(projectDir, sceneInfos)
     await runRawFfmpeg(
