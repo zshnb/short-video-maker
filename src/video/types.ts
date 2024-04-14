@@ -17,3 +17,13 @@ export type SceneInfo = {
     end: number
   }[]
 }
+
+export type DrawSubtitleOptions = {
+  projectDir: string
+  concatedVideo: string
+  sceneInfos: SceneInfo[]
+  textOption: {
+    color: string
+    fontSize: number
+  }
+}

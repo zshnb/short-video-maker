@@ -4,25 +4,36 @@ import { runRawFfmpeg } from '../util/ffmpegUtil'
 import ShortUniqueId from 'short-unique-id'
 import { localProjectPath, subtitleDir, tmpDir } from '../util/pathUtil'
 import * as fs from 'fs/promises'
-import { SceneInfo, ScriptFile } from './types'
+import { DrawSubtitleOptions, SceneInfo, ScriptFile } from './types'
 import srtParser2 from 'srt-parser-2'
 import { removeWordSymbol } from '../util/wordUtil'
 import { prepFolder } from '../util/folderUtil'
 
 const logger = getLogger('video-service')
+
 @Injectable()
 export class VideoService {
   private srtParser: srtParser2
+
   constructor() {
     this.srtParser = new srtParser2()
   }
+
   async generateShorts() {
     logger.info('start generate shorts')
     const projectId = new ShortUniqueId({ length: 6 })
     const projectDir = localProjectPath(projectId.rnd())
     const { sceneInfos, outputVideo } =
       await this.concatImageToVideo(projectDir)
-    await this.drawSubtitles(projectDir, outputVideo, sceneInfos)
+    await this.drawSubtitles({
+      projectDir,
+      concatedVideo: outputVideo,
+      sceneInfos,
+      textOption: {
+        fontSize: 80,
+        color: 'white',
+      },
+    })
   }
 
   private async concatImageToVideo(projectDir: string) {
@@ -38,15 +49,16 @@ export class VideoService {
     }
   }
 
-  private async drawSubtitles(
-    projectDir: string,
-    concatedVideo: string,
-    sceneInfos: SceneInfo[],
-  ) {
+  private async drawSubtitles({
+    projectDir,
+    concatedVideo,
+    sceneInfos,
+    textOption,
+  }: DrawSubtitleOptions) {
     const vfArgs = sceneInfos
       .flatMap((it, index) => {
         return it.words.map((word, j) => {
-          return `drawtext=fontfile=./assets/Resolve.otf:textfile=${subtitleDir(projectDir)}/${index}_${j}.txt:x=(w-text_w)/2:y=(h-text_h)/2:fontsize=80:fontcolor=white:enable='between(t,${word.start},${word.end})'`
+          return `drawtext=fontfile=./assets/Resolve.otf:textfile=${subtitleDir(projectDir)}/${index}_${j}.txt:x=(w-text_w)/2:y=(h-text_h)/2:fontsize=${textOption.fontSize}:fontcolor=${textOption.color}:enable='between(t,${word.start},${word.end})'`
         })
       })
       .join(',')
@@ -74,6 +86,7 @@ export class VideoService {
         encoding: 'utf8',
       })
     }
+
     await generateConcatFile()
   }
 
