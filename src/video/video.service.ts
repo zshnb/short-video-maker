@@ -2,12 +2,15 @@ import { Injectable } from '@nestjs/common'
 import { getLogger } from '../logger'
 import { runRawFfmpeg } from '../util/ffmpegUtil'
 import ShortUniqueId from 'short-unique-id'
-import { localProjectPath, subtitleDir, tmpDir } from '../util/pathUtil'
+import { localProjectPath, subtitleDir } from '../util/pathUtil'
 import * as fs from 'fs/promises'
 import { DrawSubtitleOptions, SceneInfo, ScriptFile } from './types'
 import srtParser2 from 'srt-parser-2'
 import { removeWordSymbol } from '../util/wordUtil'
 import { prepFolder } from '../util/folderUtil'
+import imageSize from 'image-size'
+import { levenshteinEditDistance } from 'levenshtein-edit-distance'
+import { animation } from './animation'
 
 const logger = getLogger('video-service')
 
@@ -39,9 +42,24 @@ export class VideoService {
   private async concatImageToVideo(projectDir: string) {
     await fs.cp(`test_data/test_data_m2`, projectDir, { recursive: true })
     const sceneInfos = await this.getAllSceneInfo(projectDir)
-    await this.prepareData(projectDir, sceneInfos)
+    const files = (await fs.readdir(projectDir))
+      .filter((it) => it.endsWith('.png'))
+      .sort((a, b) => {
+        const aIndex = a.split('_')[1]
+        const bIndex = b.split('_')[1]
+        return parseInt(aIndex) < parseInt(bIndex) ? -1 : 1
+      })
+    const imgSize = imageSize(`${projectDir}/${files[0]}`)
+    const inputArgs = sceneInfos
+      .map(
+        (scene, index) =>
+          `-t ${scene.duration} -i ${projectDir}/${files[index]}`,
+      )
+      .join(' ')
+    const { zoompan } = animation(sceneInfos)
+    const complexFilter = zoompan()
     await runRawFfmpeg(
-      `-safe 0 -f concat -i ${projectDir}/input.txt -i ${projectDir}/input.mp3 -vf fps=25 -vsync vfr -pix_fmt yuv420p ${projectDir}/concat.mp4`,
+      `${inputArgs} -i ${projectDir}/input.mp3 -filter_complex ${complexFilter} -map [v] -map ${sceneInfos.length} -s ${imgSize.width}x${imgSize.height} ${projectDir}/concat.mp4`,
     )
     return {
       sceneInfos,
@@ -67,29 +85,6 @@ export class VideoService {
     )
   }
 
-  private async prepareData(projectDir: string, sceneTimeRanges: SceneInfo[]) {
-    async function generateConcatFile() {
-      const files = (await fs.readdir(projectDir))
-        .filter((it) => it.endsWith('.png'))
-        .sort((a, b) => {
-          const aIndex = a.split('_')[1]
-          const bIndex = b.split('_')[1]
-          return parseInt(aIndex) < parseInt(bIndex) ? -1 : 1
-        })
-      const fileContent =
-        files
-          .map((it, index) => {
-            return `file './${it}'\nduration ${sceneTimeRanges[index].duration}`
-          })
-          .join('\n') + `\nfile './${files[files.length - 1]}'`
-      await fs.writeFile(`${projectDir}/input.txt`, fileContent, {
-        encoding: 'utf8',
-      })
-    }
-
-    await generateConcatFile()
-  }
-
   async getAllSceneInfo(projectDir: string) {
     async function readScriptFile(): Promise<ScriptFile> {
       const jsonFile = await fs.readFile(`${projectDir}/script.json`, 'utf8')
@@ -100,44 +95,78 @@ export class VideoService {
     const { scenes } = await readScriptFile()
     const srtContent = await fs.readFile(`${projectDir}/words.srt`, 'utf8')
     const srts = this.srtParser.fromSrt(srtContent)
-    const sceneTimeRanges: SceneInfo[] = []
-    let index = 0
-    for (const { narration, scene_number } of scenes) {
-      const words = narration.split(' ').map((it, index) => {
-        return {
-          start: srts[index].startSeconds,
-          end: srts[index].endSeconds,
-          text: it,
-        }
-      })
-      const firstWord = removeWordSymbol(words[0].text)
-      const lastWord = removeWordSymbol(words[words.length - 1].text)
-      // what if index not exist?
-      const firstSrtIndex = srts.findIndex((it) => it.text === firstWord)
-      const lastSrtIndex = srts.findIndex((it) => it.text === lastWord)
-      if (firstSrtIndex === -1 || lastSrtIndex === -1) {
-        console.log(
-          `first word: ${words[0]}, last word: ${words[words.length - 1]}`,
-        )
+    const srtChars = srts.map((it) => it.text).join('') // flat srt words to one-line characters, prepare for edit distance
+    const sceneInfos: SceneInfo[] = []
+
+    /*
+      because we only know the character index in edit distance,
+      so we need map word index with its character [start, end] index
+     */
+    const wordIndexWithCharacterIndex = []
+    for (const srt of srts) {
+      if (wordIndexWithCharacterIndex.length === 0) {
+        wordIndexWithCharacterIndex.push([0, srt.text.length])
+      } else {
+        const last =
+          wordIndexWithCharacterIndex[wordIndexWithCharacterIndex.length - 1]
+        wordIndexWithCharacterIndex.push([last[1], last[1] + srt.text.length])
       }
-      sceneTimeRanges.push({
-        number: scene_number,
-        start: srts[firstSrtIndex].startSeconds,
-        end: srts[lastSrtIndex].endSeconds,
+    }
+    let startIndex = 0
+    let srtStartWordIndex = -1
+    for (const scene of scenes) {
+      let minEditDistance = scene.narration.length
+      let minEditDistanceEndCharIndex = 0
+      for (
+        let i = startIndex;
+        i < startIndex + scene.narration.length + 20;
+        i++
+      ) {
+        const subSrtChars = srtChars.slice(startIndex, i)
+        const editDistance = levenshteinEditDistance(
+          scene.narration,
+          subSrtChars,
+        )
+        if (editDistance < minEditDistance) {
+          minEditDistance = editDistance
+          minEditDistanceEndCharIndex = i
+        }
+      }
+
+      const srtEndWordIndex = wordIndexWithCharacterIndex.findIndex(
+        (it) =>
+          minEditDistanceEndCharIndex >= it[0] &&
+          minEditDistanceEndCharIndex <= it[1],
+      )
+      const words = srts
+        .slice(srtStartWordIndex + 1, srtEndWordIndex + 1)
+        .map((it) => {
+          return {
+            start: it.startSeconds,
+            end: it.endSeconds,
+            text: it.text,
+          }
+        })
+      startIndex = minEditDistanceEndCharIndex
+      sceneInfos.push({
+        number: scene.scene_number,
+        start: srts[srtStartWordIndex + 1].startSeconds,
+        end: srts[srtEndWordIndex].endSeconds,
         duration:
-          srts[lastSrtIndex].endSeconds - srts[firstSrtIndex].startSeconds,
+          srts[srtEndWordIndex].endSeconds -
+          (sceneInfos.length === 0
+            ? srts[srtStartWordIndex + 1].startSeconds
+            : sceneInfos[sceneInfos.length - 1].end),
         words,
       })
       for (let j = 0; j < words.length; j++) {
         await fs.writeFile(
-          `${subtitleDir(projectDir)}/${index}_${j}.txt`,
+          `${subtitleDir(projectDir)}/${scene.scene_number - 1}_${j}.txt`,
           words[j].text,
         )
       }
-      srts.splice(firstSrtIndex, lastSrtIndex - firstSrtIndex + 1)
-      index += 1
+      srtStartWordIndex = srtEndWordIndex
     }
-
-    return sceneTimeRanges
+    return sceneInfos
   }
 }
