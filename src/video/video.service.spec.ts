@@ -1,13 +1,20 @@
 import { Test, TestingModule } from '@nestjs/testing'
 import { VideoService } from './video.service'
 import { describe, beforeEach, it } from 'vitest'
+import { Composition } from './composition'
 
 describe('VideoService', () => {
   let service: VideoService
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [VideoService],
+      providers: [
+        VideoService,
+        {
+          provide: Composition,
+          useValue: new Composition(),
+        },
+      ],
     }).compile()
 
     service = module.get<VideoService>(VideoService)

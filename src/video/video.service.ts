@@ -5,22 +5,19 @@ import ShortUniqueId from 'short-unique-id'
 import { localProjectPath, subtitleDir } from '../util/pathUtil'
 import * as fs from 'fs/promises'
 import { DrawSubtitleOptions, SceneInfo, ScriptFile } from './types'
-import srtParser2 from 'srt-parser-2'
-import { removeWordSymbol } from '../util/wordUtil'
 import { prepFolder } from '../util/folderUtil'
 import imageSize from 'image-size'
-import { levenshteinEditDistance } from 'levenshtein-edit-distance'
-import { animation } from './animation'
+import { Composition } from './composition'
+import Parser from './srtParser'
+import { levenshteinEditDistance } from './levenshtein-edit-distance'
 
 const logger = getLogger('video-service')
 
 @Injectable()
 export class VideoService {
-  private srtParser: srtParser2
+  private srtParser: Parser = new Parser()
 
-  constructor() {
-    this.srtParser = new srtParser2()
-  }
+  constructor(private readonly composition: Composition) {}
 
   async generateShorts() {
     logger.info('start generate shorts')
@@ -56,8 +53,7 @@ export class VideoService {
           `-t ${scene.duration} -i ${projectDir}/${files[index]}`,
       )
       .join(' ')
-    const { zoompan } = animation(sceneInfos)
-    const complexFilter = zoompan()
+    const complexFilter = this.composition.composite(sceneInfos)
     await runRawFfmpeg(
       `${inputArgs} -i ${projectDir}/input.mp3 -filter_complex ${complexFilter} -map [v] -map ${sceneInfos.length} -s ${imgSize.width}x${imgSize.height} ${projectDir}/concat.mp4`,
     )
@@ -126,6 +122,7 @@ export class VideoService {
         const editDistance = levenshteinEditDistance(
           scene.narration,
           subSrtChars,
+          false,
         )
         if (editDistance < minEditDistance) {
           minEditDistance = editDistance
