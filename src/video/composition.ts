@@ -5,20 +5,46 @@ import { SceneInfo } from './types'
 
 @Injectable()
 export class Composition {
-  composite(sceneInfos: SceneInfo[]) {
+  composite(sceneInfos: SceneInfo[], xFadeDuration: number) {
     const { zoompan } = animation()
-    const { fade } = transition()
+    const { xFade } = transition()
 
-    let complexFilter = sceneInfos
+    const zoompanFilter = sceneInfos
       .map((scene, index) => {
+        if (index !== 0) {
+          scene.duration += xFadeDuration
+        }
         const zoomOutFilter = zoompan(index, scene)
-        const fadeFilter = fade()
-
-        return `[${index}:v]${zoomOutFilter},${fadeFilter}[v${index}]`
+        return `[${index}:v]${zoomOutFilter}[v${index}]`
       })
       .join(';')
-    const videoSymbols = sceneInfos.map((_, index) => `[v${index}]`).join('')
-    complexFilter += `;${videoSymbols}concat=n=${sceneInfos.length}:v=1:a=0,format=yuv420p[v]`
+
+    let previousOffset = 0
+    const xFadeFilter = sceneInfos
+      .map((scene, index) => {
+        const offset = scene.duration + previousOffset - xFadeDuration
+        previousOffset = offset
+        const fadeFilter = xFade({
+          transition: 'slideleft',
+          duration: xFadeDuration,
+          offset,
+        })
+        if (index === 0) {
+          return `[v${index}][v${index + 1}]${fadeFilter}[x${index}]`
+        } else if (index < sceneInfos.length - 1) {
+          let filter = `[x${index - 1}][v${index + 1}]${fadeFilter}`
+          if (index !== sceneInfos.length - 2) {
+            filter = `${filter}[x${index}]`
+          }
+          return filter
+        } else {
+          return undefined
+        }
+      })
+      .filter((it) => it !== undefined)
+      .join(';')
+
+    const complexFilter = `${zoompanFilter};${xFadeFilter},format=yuv420p[v]`
     return complexFilter
   }
 }

@@ -39,6 +39,7 @@ export class VideoService {
   private async concatImageToVideo(projectDir: string) {
     await fs.cp(`test_data/test_data_m2`, projectDir, { recursive: true })
     const sceneInfos = await this.getAllSceneInfo(projectDir)
+    const xFadeDuration = 0.5
     const files = (await fs.readdir(projectDir))
       .filter((it) => it.endsWith('.png'))
       .sort((a, b) => {
@@ -48,12 +49,15 @@ export class VideoService {
       })
     const imgSize = imageSize(`${projectDir}/${files[0]}`)
     const inputArgs = sceneInfos
-      .map(
-        (scene, index) =>
-          `-t ${scene.duration} -i ${projectDir}/${files[index]}`,
-      )
+      .map((scene, index) => {
+        if (index === 0) {
+          return `-t ${scene.duration} -i ${projectDir}/${files[index]}`
+        } else {
+          return `-t ${scene.duration + xFadeDuration} -i ${projectDir}/${files[index]}`
+        }
+      })
       .join(' ')
-    const complexFilter = this.composition.composite(sceneInfos)
+    const complexFilter = this.composition.composite(sceneInfos, xFadeDuration)
     await runRawFfmpeg(
       `${inputArgs} -i ${projectDir}/input.mp3 -filter_complex ${complexFilter} -map [v] -map ${sceneInfos.length} -s ${imgSize.width}x${imgSize.height} ${projectDir}/concat.mp4`,
     )

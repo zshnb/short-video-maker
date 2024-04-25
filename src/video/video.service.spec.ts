@@ -8,13 +8,7 @@ describe('VideoService', () => {
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        VideoService,
-        {
-          provide: Composition,
-          useValue: new Composition(),
-        },
-      ],
+      providers: [VideoService, Composition],
     }).compile()
 
     service = module.get<VideoService>(VideoService)
