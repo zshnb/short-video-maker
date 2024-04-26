@@ -11,9 +11,6 @@ export class Composition {
 
     const zoompanFilter = sceneInfos
       .map((scene, index) => {
-        if (index !== 0) {
-          scene.duration += xFadeDuration
-        }
         const zoomOutFilter = zoompan(index, scene)
         return `[${index}:v]${zoomOutFilter}[v${index}]`
       })

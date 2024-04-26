@@ -50,11 +50,8 @@ export class VideoService {
     const imgSize = imageSize(`${projectDir}/${files[0]}`)
     const inputArgs = sceneInfos
       .map((scene, index) => {
-        if (index === 0) {
-          return `-t ${scene.duration} -i ${projectDir}/${files[index]}`
-        } else {
-          return `-t ${scene.duration + xFadeDuration} -i ${projectDir}/${files[index]}`
-        }
+        scene.duration += xFadeDuration
+        return `-t ${scene.duration} -i ${projectDir}/${files[index]}`
       })
       .join(' ')
     const complexFilter = this.composition.composite(sceneInfos, xFadeDuration)
